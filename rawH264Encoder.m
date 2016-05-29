@@ -73,13 +73,18 @@
 
 - (void)finish
 {
-    // Mark the completion
-    VTCompressionSessionCompleteFrames(EncodingSession, kCMTimeInvalid);
-    
-    // End the session
-    VTCompressionSessionInvalidate(EncodingSession);
-    CFRelease(EncodingSession);
-    EncodingSession = NULL;
+    dispatch_sync(aQueue, ^{
+        // Mark the completion
+        NSLog(@" - - - - - - - - - - - - - - - - - - - - - - -");
+        NSLog(@" - - - - - - - - session end - - - - - - - - - ");
+        NSLog(@" - - - - - - - - - - - - - - - - - - - - - - -");
+        VTCompressionSessionCompleteFrames(EncodingSession, kCMTimeInvalid);
+        
+        // End the session
+        VTCompressionSessionInvalidate(EncodingSession);
+        CFRelease(EncodingSession);
+        EncodingSession = NULL;
+    });
 }
 
 #pragma mark private
@@ -90,6 +95,9 @@
         // For testing out the logic, lets read from a file and then send it to encoder to create h264 stream
         
         // Create the compression session
+        NSLog(@" - - - - - - - - - - - - - - - - - - - - - - -");
+        NSLog(@" - - - - - - - - session create - - - - - - - -");
+        NSLog(@" - - - - - - - - - - - - - - - - - - - - - - -");
         OSStatus status = VTCompressionSessionCreate(NULL, width, height, kCMVideoCodecType_H264, NULL, NULL, NULL, didCompressH264, (__bridge void *)(self),  &EncodingSession);
         NSLog(@"H264: VTCompressionSessionCreate %d", (int)status);
         NSAssert(status == 0, @"H264: Unable to create a H264 session");
@@ -134,6 +142,11 @@ void didCompressH264(void *outputCallbackRefCon, void *sourceFrameRefCon, OSStat
         return;
     }
     rawH264Encoder * encoder = (__bridge rawH264Encoder * )outputCallbackRefCon;
+    
+    if (encoder->_delegate)
+    {
+        [encoder->_delegate gotCompressedSampleBuffer:sampleBuffer];
+    }
 
     // Check if we have got a key frame first
     bool keyframe = !CFDictionaryContainsKey( (CFArrayGetValueAtIndex(CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, true), 0)), kCMSampleAttachmentKey_NotSync);
