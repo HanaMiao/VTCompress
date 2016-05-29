@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		F10EC8A11CF8CF0D002BD601 /* daemon.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = F10EC8A01CF8CF0D002BD601 /* daemon.mp4 */; };
+		F10EC8A51CF8D2D4002BD601 /* android.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = F10EC8A41CF8D2D4002BD601 /* android.mp4 */; };
 		F1A5E6ED1CF8BC76001E1624 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = F1A5E6EC1CF8BC76001E1624 /* main.m */; };
 		F1A5E6F01CF8BC76001E1624 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = F1A5E6EF1CF8BC76001E1624 /* AppDelegate.m */; };
 		F1A5E6F31CF8BC76001E1624 /* ViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F1A5E6F21CF8BC76001E1624 /* ViewController.m */; };
@@ -19,6 +20,7 @@
 
 /* Begin PBXFileReference section */
 		F10EC8A01CF8CF0D002BD601 /* daemon.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = daemon.mp4; sourceTree = "<group>"; };
+		F10EC8A41CF8D2D4002BD601 /* android.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = android.mp4; sourceTree = "<group>"; };
 		F1A5E6E81CF8BC75001E1624 /* VTCompress.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VTCompress.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F1A5E6EC1CF8BC76001E1624 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		F1A5E6EE1CF8BC76001E1624 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
@@ -48,6 +50,7 @@
 		F1A5E6DF1CF8BC75001E1624 = {
 			isa = PBXGroup;
 			children = (
+				F10EC8A41CF8D2D4002BD601 /* android.mp4 */,
 				F10EC8A01CF8CF0D002BD601 /* daemon.mp4 */,
 				F1A5E7051CF8C031001E1624 /* CoreMedia.framework */,
 				F1A5E6EA1CF8BC76001E1624 /* VTCompress */,
@@ -146,6 +149,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F10EC8A51CF8D2D4002BD601 /* android.mp4 in Resources */,
 				F10EC8A11CF8CF0D002BD601 /* daemon.mp4 in Resources */,
 				F1A5E6FB1CF8BC76001E1624 /* LaunchScreen.storyboard in Resources */,
 				F1A5E6F81CF8BC76001E1624 /* Assets.xcassets in Resources */,

@@ -46,9 +46,10 @@
         CVImageBufferRef imageBuffer = (CVImageBufferRef)CMSampleBufferGetImageBuffer(sampleBuffer);
         
         // Create properties
-        CMTime presentationTimeStamp = CMSampleBufferGetDecodeTimeStamp(sampleBuffer);
+        CMTime decodeTimeStamp = CMSampleBufferGetDecodeTimeStamp(sampleBuffer);
+        CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
         CMTime duration = CMSampleBufferGetDuration(sampleBuffer);
-        NSLog(@" %d ===>", inputFrameCount);
+        NSLog(@" %d ===> %lld, %d, %lld", inputFrameCount, presentationTimeStamp.value, presentationTimeStamp.timescale, presentationTimeStamp.value/presentationTimeStamp.timescale);
         VTEncodeInfoFlags flags;
         
         // Pass it to the encoder
@@ -121,7 +122,6 @@
         VTCompressionSessionPrepareToEncodeFrames(EncodingSession);
     });
 }
-
 
 void didCompressH264(void *outputCallbackRefCon, void *sourceFrameRefCon, OSStatus status, VTEncodeInfoFlags infoFlags, CMSampleBufferRef sampleBuffer )
 {
