@@ -32,6 +32,7 @@
 @property (assign, nonatomic)int outputAudioFrameCount;
 @property (assign, nonatomic)BOOL ifSaveH464File;
 @property (assign, nonatomic)BOOL if7Second;
+@property (assign, nonatomic)BOOL ifReduceFrame;
 
 @end
 
@@ -60,6 +61,7 @@
     self.outputAudioFrameCount = 0;
     self.ifSaveH464File = NO;
     self.if7Second = YES;
+    self.ifReduceFrame = NO;
 }
 
 - (void)didReceiveMemoryWarning {
@@ -102,7 +104,7 @@
             self.keyFrameCount++;
         }
         log = [log stringByAppendingString:[NSString stringWithFormat:@"( key - %d )", self.keyFrameCount]];
-        //NSLog(@"%@", log);
+        NSLog(@"%@", log);
     }
     
     if (self.ifSaveH464File && fileHandle != NULL)
@@ -343,8 +345,11 @@
 - (CMSampleBufferRef)nextVideoSampleBufferToWrite
 {
     int totalSamples = (int)self.compressedVideoSamples.count;
-    static int currVideoCount = 0;
+    static int currVideoCount = 1;
     //NSLog(@"+++ ask for video : %d", currVideoCount);
+    if (self.ifReduceFrame && currVideoCount % 5 == 0) {
+        currVideoCount ++;
+    }
     if (currVideoCount < totalSamples) {
         CMSampleBufferRef sampleBuffer = (__bridge CMSampleBufferRef)(self.compressedVideoSamples[currVideoCount++]);
         CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
@@ -361,7 +366,13 @@
 - (CMSampleBufferRef)nextAudioSampleBufferToWrite
 {
     //NSLog(@"--- ask for audio : %d", askedAudioCount++);
+    static int currAudioCount = 0;
     CMSampleBufferRef sampleBuffer = [self.audioTrackOutput copyNextSampleBuffer];
+    currAudioCount++;
+    if (self.ifReduceFrame && currAudioCount % 5 == 0) {
+        sampleBuffer = [self.audioTrackOutput copyNextSampleBuffer];
+        currAudioCount++;
+    }
     CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
     //NSLog(@"0 - >PTS:%lld",  presentationTimeStamp.value);
     //音频总PPS：464111
