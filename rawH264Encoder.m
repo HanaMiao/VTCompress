@@ -108,23 +108,21 @@
         VTSessionSetProperty(EncodingSession, kVTCompressionPropertyKey_AllowTemporalCompression, kCFBooleanFalse);
         VTSessionSetProperty(EncodingSession, kVTCompressionPropertyKey_AllowFrameReordering, kCFBooleanFalse);
         
-        float quality = 0.5; //not much relate to output file size
-        VTSessionSetProperty(EncodingSession, kVTCompressionPropertyKey_Quality, CFNumberCreate(NULL, kCFNumberFloatType, &quality));
-        
-        int32_t nominalFrameRate = 24; //larger value leads to less key frame and smaller output file size
-        VTSessionSetProperty(EncodingSession, kVTCompressionPropertyKey_ExpectedFrameRate, CFNumberCreate(NULL, kCFNumberSInt32Type, &nominalFrameRate));
-        
-        int maxKeyFrameInterval = nominalFrameRate*2;
+//        float quality = 0.5; //not much relate to output file size
+//        VTSessionSetProperty(EncodingSession, kVTCompressionPropertyKey_Quality, CFNumberCreate(NULL, kCFNumberFloatType, &quality));
+
+
+        int maxKeyFrameInterval = 24; //effect the key frame interval
         VTSessionSetProperty(EncodingSession, kVTCompressionPropertyKey_MaxKeyFrameInterval, CFNumberCreate(NULL, kCFNumberIntType, &maxKeyFrameInterval));
-        
+
         int32_t bitRate = 600 * 1000; //much relate to output file size
         VTSessionSetProperty(EncodingSession, kVTCompressionPropertyKey_AverageBitRate, CFNumberCreate(NULL, kCFNumberSInt32Type, &bitRate));
         
-        int32_t sourceFrameCount = 255;
-        VTSessionSetProperty(EncodingSession, kVTCompressionPropertyKey_SourceFrameCount, CFNumberCreate(NULL, kCFNumberSInt32Type, &sourceFrameCount));
-        
-        int32_t expectedDuration = 12288;
-        VTSessionSetProperty(EncodingSession, kVTCompressionPropertyKey_ExpectedDuration, CFNumberCreate(NULL, kCFNumberSInt32Type, &expectedDuration));
+//        int32_t sourceFrameCount = 255;
+//        VTSessionSetProperty(EncodingSession, kVTCompressionPropertyKey_SourceFrameCount, CFNumberCreate(NULL, kCFNumberSInt32Type, &sourceFrameCount));
+//        
+//        int32_t expectedDuration = 12288;
+//        VTSessionSetProperty(EncodingSession, kVTCompressionPropertyKey_ExpectedDuration, CFNumberCreate(NULL, kCFNumberSInt32Type, &expectedDuration));
         
         // Tell the encoder to start encoding
         VTCompressionSessionPrepareToEncodeFrames(EncodingSession);

@@ -30,6 +30,8 @@
 @property (assign, nonatomic)int inputAudioFrameCount;
 @property (assign, nonatomic)int outputVideoFrameCount;
 @property (assign, nonatomic)int outputAudioFrameCount;
+@property (assign, nonatomic)BOOL ifSaveH464File;
+@property (assign, nonatomic)BOOL if7Second;
 
 @end
 
@@ -56,6 +58,8 @@
     self.inputAudioFrameCount = 0;
     self.outputVideoFrameCount = 0;
     self.outputAudioFrameCount = 0;
+    self.ifSaveH464File = NO;
+    self.if7Second = YES;
 }
 
 - (void)didReceiveMemoryWarning {
@@ -72,6 +76,9 @@
 #pragma mark <rawH264EncoderDelegate>
 - (void)gotSpsPps:(NSData*)sps pps:(NSData*)pps
 {
+    if (!_ifSaveH464File) {
+        return;
+    }
     //NSLog(@"gotSpsPps %d %d", (int)[sps length], (int)[pps length]);
     const char bytes[] = "\x00\x00\x00\x01";
     size_t length = (sizeof bytes) - 1; //string literals have implicit trailing '\0'
@@ -91,11 +98,14 @@
     if (isKeyFrame) {
         self.keyFrameInterval = totalCount - lastKeyFrameCount;
         lastKeyFrameCount = totalCount;
-        log = [log stringByAppendingString:[NSString stringWithFormat:@"( key - %d )", self.keyFrameCount++]];
+        if (totalCount < 191) {
+            self.keyFrameCount++;
+        }
+        log = [log stringByAppendingString:[NSString stringWithFormat:@"( key - %d )", self.keyFrameCount]];
         //NSLog(@"%@", log);
     }
     
-    if (fileHandle != NULL)
+    if (self.ifSaveH464File && fileHandle != NULL)
     {
         const char bytes[] = "\x00\x00\x00\x01";
         size_t length = (sizeof bytes) - 1; //string literals have implicit trailing '\0'
@@ -340,7 +350,7 @@
         CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
         //NSLog(@"V - > PTS:%lld",  presentationTimeStamp.value);
         //视频总PPS：130048
-        if (presentationTimeStamp.value > 97500) {
+        if (self.if7Second && presentationTimeStamp.value > 97500) {
             return nil;
         }
         return sampleBuffer;
@@ -355,7 +365,7 @@
     CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
     //NSLog(@"0 - >PTS:%lld",  presentationTimeStamp.value);
     //音频总PPS：464111
-    if (presentationTimeStamp.value > 348000) {
+    if (self.if7Second && presentationTimeStamp.value > 348000) {
         return nil;
     }
     return sampleBuffer;
