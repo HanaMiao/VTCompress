@@ -207,7 +207,7 @@
     //prepare for reader and writer
     NSParameterAssert([self startAssetReader]);
     NSParameterAssert([self prepareWriter]);
-    h264Encoder = [[rawH264Encoder alloc] initWithWidth:480 height:640];
+    h264Encoder = [[rawH264Encoder alloc] initWithWidth:360 height:480];
     h264Encoder.delegate = self;
     
     NSLog(@"================ start convert == video ================");
@@ -332,7 +332,11 @@
     if (currVideoCount < totalSamples) {
         CMSampleBufferRef sampleBuffer = (__bridge CMSampleBufferRef)(self.compressedVideoSamples[currVideoCount++]);
         CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-        //NSLog(@"PTS:%lld",  presentationTimeStamp.value);
+        NSLog(@"V - > PTS:%lld",  presentationTimeStamp.value);
+        //视频总PPS：130048
+        if (presentationTimeStamp.value > 92000) {
+            return nil;
+        }
         return sampleBuffer;
     }
     return nil;
@@ -344,7 +348,11 @@
     //NSLog(@"--- ask for audio : %d", askedAudioCount++);
     CMSampleBufferRef sampleBuffer = [self.audioTrackOutput copyNextSampleBuffer];
     CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-    NSLog(@"PTS:%lld",  presentationTimeStamp.value);
+    NSLog(@"0 - >PTS:%lld",  presentationTimeStamp.value);
+    //音频总PPS：464111
+    if (presentationTimeStamp.value > 348000) {
+        return nil;
+    }
     return sampleBuffer;
 }
 
