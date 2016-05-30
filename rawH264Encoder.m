@@ -49,7 +49,7 @@
         CMTime decodeTimeStamp = CMSampleBufferGetDecodeTimeStamp(sampleBuffer);
         CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
         CMTime duration = CMSampleBufferGetDuration(sampleBuffer);
-        NSLog(@" %d ===> PTS:%lld, DTS:%d", inputFrameCount, presentationTimeStamp.value, presentationTimeStamp.timescale);
+        //NSLog(@" %d ===> PTS:%lld, DTS:%d", inputFrameCount, presentationTimeStamp.value, presentationTimeStamp.timescale);
         VTEncodeInfoFlags flags;
         
         // Pass it to the encoder

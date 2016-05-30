@@ -26,11 +26,11 @@
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "VTCompress/ViewController.m"
-            timestampString = "486283268.963229"
+            timestampString = "486285041.349339"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "303"
-            endingLineNumber = "303"
+            startingLineNumber = "307"
+            endingLineNumber = "307"
             landmarkName = "-carolEndWork"
             landmarkType = "5">
          </BreakpointContent>

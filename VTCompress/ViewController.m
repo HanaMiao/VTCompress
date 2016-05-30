@@ -26,6 +26,10 @@
 @property (strong, nonatomic)NSMutableArray * compressedVideoSamples;
 @property (assign, nonatomic)int keyFrameCount;
 @property (assign, nonatomic)int keyFrameInterval;
+@property (assign, nonatomic)int inputVideoFrameCount;
+@property (assign, nonatomic)int inputAudioFrameCount;
+@property (assign, nonatomic)int outputVideoFrameCount;
+@property (assign, nonatomic)int outputAudioFrameCount;
 
 @end
 
@@ -48,6 +52,10 @@
     self.compressedVideoSamples = [[NSMutableArray alloc] init];
     self.keyFrameCount = 0;
     self.keyFrameInterval = 0;
+    self.inputVideoFrameCount = 0;
+    self.inputAudioFrameCount = 0;
+    self.outputVideoFrameCount = 0;
+    self.outputAudioFrameCount = 0;
 }
 
 - (void)didReceiveMemoryWarning {
@@ -84,7 +92,7 @@
         self.keyFrameInterval = totalCount - lastKeyFrameCount;
         lastKeyFrameCount = totalCount;
         log = [log stringByAppendingString:[NSString stringWithFormat:@"( key - %d )", self.keyFrameCount++]];
-        NSLog(@"%@", log);
+        //NSLog(@"%@", log);
     }
     
     if (fileHandle != NULL)
@@ -99,8 +107,7 @@
 
 - (void)gotCompressedSampleBuffer:(CMSampleBufferRef) sampleBuffer
 {
-    static int sampleCount = 1;
-    //NSLog(@" = = = = = = = >> %d", sampleCount++);
+    self.inputVideoFrameCount++;
     [self.compressedVideoSamples addObject:(__bridge id _Nonnull)(sampleBuffer)];
 }
 
@@ -210,7 +217,7 @@
     h264Encoder = [[rawH264Encoder alloc] initWithWidth:360 height:480];
     h264Encoder.delegate = self;
     
-    NSLog(@"================ start convert == video ================");
+    NSLog(@"================ start encode video ================");
     CMSampleBufferRef sampleBuffer = [self.videoTrackOutput copyNextSampleBuffer];
     if (!sampleBuffer) {
         NSLog(@"Error Can not read video sample buffer");
@@ -222,8 +229,7 @@
         if (sampleBuffer) {
             sourceFileSampleCount++;
             [h264Encoder encode:sampleBuffer];
-            if (sourceFileSampleCount > 1000 || self.assetReader.status != AVAssetReaderStatusReading) {
-                //7秒视频190帧
+            if (self.assetReader.status != AVAssetReaderStatusReading) {
                 sampleBuffer = nil;
                 break;
             }else{
@@ -236,7 +242,7 @@
                 NSLog(@"Reached the end of the video.");
                 NSLog(@"================ end ====== frame count %d ===========", sourceFileSampleCount);
             } else{
-                NSLog(@"================ end (%ld) ====== frame count %d ===========", (long)self.assetReader.status, sourceFileSampleCount);
+                NSLog(@"================ end encode video ====== frame count %d ===========", sourceFileSampleCount);
             }
             break;
         }
@@ -245,21 +251,20 @@
     WEAK_OBJ_REF(self);
     [self.assetWriter startWriting];
     [self.assetWriter startSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp((__bridge CMSampleBufferRef)self.compressedVideoSamples[0])];
-    static int videoSampleCount = 0;
     [self.videoWriterInput requestMediaDataWhenReadyOnQueue:writeQueue usingBlock:^{
         while ([weak_self.videoWriterInput isReadyForMoreMediaData])
         {
             CMSampleBufferRef nextSampleBuffer = [weak_self nextVideoSampleBufferToWrite];
             if (nextSampleBuffer)
             {
-                videoSampleCount++;
+                weak_self.outputVideoFrameCount++;
                 [weak_self.videoWriterInput appendSampleBuffer:nextSampleBuffer];
                 //CFRelease(nextSampleBuffer);
             }
             else
             {
                 [weak_self.videoWriterInput markAsFinished];
-                NSLog(@"======= end video (%d)", videoSampleCount);
+                NSLog(@"======= end video (%d) =====", weak_self.outputVideoFrameCount);
                 if (weak_self.oneTrackHasFinishWrite) {
                     [weak_self.assetWriter endSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp((__bridge CMSampleBufferRef)weak_self.compressedVideoSamples[weak_self.compressedVideoSamples.count - 1])];
                     [weak_self carolEndWork];
@@ -271,21 +276,20 @@
         }
     }];
     
-    static int audioSampleCount = 0;
     [self.audioWriterInput requestMediaDataWhenReadyOnQueue:writeQueue usingBlock:^{
         while ([weak_self.audioWriterInput isReadyForMoreMediaData])
         {
             CMSampleBufferRef nextSampleBuffer = [weak_self nextAudioSampleBufferToWrite];
             if (nextSampleBuffer)
             {
-                audioSampleCount++;
+                weak_self.outputAudioFrameCount++;
                 [weak_self.audioWriterInput appendSampleBuffer:nextSampleBuffer];
                 CFRelease(nextSampleBuffer);
             }
             else
             {
                 [weak_self.audioWriterInput markAsFinished];
-                NSLog(@"======= end audio (%d)", audioSampleCount);
+                NSLog(@"======= end audio (%d)", weak_self.outputAudioFrameCount);
                 if (weak_self.oneTrackHasFinishWrite) {
                     [weak_self.assetWriter endSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp((__bridge CMSampleBufferRef)weak_self.compressedVideoSamples[weak_self.compressedVideoSamples.count - 1])];
                     [weak_self carolEndWork];
@@ -314,6 +318,8 @@
             NSLog(@">>>>>>> mov file  size ( %lld ) >>>>>", [mp4FileHandle seekToEndOfFile]);
             NSLog(@"keyFrameCount: %d", self.keyFrameCount - 1);
             NSLog(@"keyFrameInterval: %d", self.keyFrameInterval);
+            NSLog(@"encodeVideoFrame: %d", self.outputVideoFrameCount);
+            NSLog(@"encodeAudioFrame: %d", self.outputAudioFrameCount);
             [mp4FileHandle closeFile];
         }
         NSLog(@" == DONE ==");
@@ -332,9 +338,9 @@
     if (currVideoCount < totalSamples) {
         CMSampleBufferRef sampleBuffer = (__bridge CMSampleBufferRef)(self.compressedVideoSamples[currVideoCount++]);
         CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-        NSLog(@"V - > PTS:%lld",  presentationTimeStamp.value);
+        //NSLog(@"V - > PTS:%lld",  presentationTimeStamp.value);
         //视频总PPS：130048
-        if (presentationTimeStamp.value > 92000) {
+        if (presentationTimeStamp.value > 97500) {
             return nil;
         }
         return sampleBuffer;
@@ -344,11 +350,10 @@
 
 - (CMSampleBufferRef)nextAudioSampleBufferToWrite
 {
-    static int askedAudioCount = 0;
     //NSLog(@"--- ask for audio : %d", askedAudioCount++);
     CMSampleBufferRef sampleBuffer = [self.audioTrackOutput copyNextSampleBuffer];
     CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-    NSLog(@"0 - >PTS:%lld",  presentationTimeStamp.value);
+    //NSLog(@"0 - >PTS:%lld",  presentationTimeStamp.value);
     //音频总PPS：464111
     if (presentationTimeStamp.value > 348000) {
         return nil;
