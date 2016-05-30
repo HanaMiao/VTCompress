@@ -9,9 +9,23 @@
 #import "ViewController.h"
 #import "rawH264Encoder.h"
 
+#define WEAK_OBJ_REF(obj) __weak __typeof__(obj) weak_##obj = obj
+
 @interface ViewController ()<rawH264EncoderDelegate>
 
 @property (weak, nonatomic) IBOutlet UIButton *goButton;
+@property (strong, nonatomic)AVAssetReader *assetReader;
+@property (strong, nonatomic)AVAssetReaderTrackOutput *videoTrackOutput;
+@property (strong, nonatomic)AVAssetReaderTrackOutput *audioTrackOutput;
+
+@property (strong, nonatomic)AVAssetWriter *assetWriter;
+@property (strong, nonatomic)AVAssetWriterInput * videoWriterInput;
+@property (strong, nonatomic)AVAssetWriterInput * audioWriterInput;
+
+@property (assign, nonatomic)BOOL oneTrackHasFinishWrite;
+@property (strong, nonatomic)NSMutableArray * compressedVideoSamples;
+@property (assign, nonatomic)int keyFrameCount;
+@property (assign, nonatomic)int keyFrameInterval;
 
 @end
 
@@ -22,17 +36,6 @@
     NSString *sourceFilePath;
     NSString *h264FilePath;
     NSFileHandle *fileHandle;
-    
-    AVAssetReader *assetReader;
-    AVAssetReaderTrackOutput *videoTrackOutput;
-    AVAssetReaderTrackOutput *audioTrackOutput;
-    
-    AVAssetWriter *assetWriter;
-    AVAssetWriterInput * videoWriterInput;
-    AVAssetWriterInput * audioWriterInput;
-    
-    BOOL oneTrackHasFinishWrite;
-    NSMutableArray * compressedVideoSamples;
 }
 
 - (void)viewDidLoad {
@@ -41,8 +44,10 @@
     self.goButton.enabled = NO;
     [self prepareFile];
     self.goButton.enabled = YES;
-    oneTrackHasFinishWrite = NO;
-    compressedVideoSamples = [[NSMutableArray alloc] init];
+    self.oneTrackHasFinishWrite = NO;
+    self.compressedVideoSamples = [[NSMutableArray alloc] init];
+    self.keyFrameCount = 0;
+    self.keyFrameInterval = 0;
 }
 
 - (void)didReceiveMemoryWarning {
@@ -59,7 +64,7 @@
 #pragma mark <rawH264EncoderDelegate>
 - (void)gotSpsPps:(NSData*)sps pps:(NSData*)pps
 {
-    NSLog(@"gotSpsPps %d %d", (int)[sps length], (int)[pps length]);
+    //NSLog(@"gotSpsPps %d %d", (int)[sps length], (int)[pps length]);
     const char bytes[] = "\x00\x00\x00\x01";
     size_t length = (sizeof bytes) - 1; //string literals have implicit trailing '\0'
     NSData *ByteHeader = [NSData dataWithBytes:bytes length:length];
@@ -71,14 +76,16 @@
 
 - (void)gotEncodedData:(NSData*)data isKeyFrame:(BOOL)isKeyFrame
 {
-    NSLog(@"gotEncodedData %d", (int)[data length]);
-    static int keyFrameCount = 1;
+    //NSLog(@"gotEncodedData %d", (int)[data length]);
     static int totalCount = 1;
+    static int lastKeyFrameCount = 0;
     NSString * log = [NSString stringWithFormat:@"===> %d", totalCount++];
     if (isKeyFrame) {
-        log = [log stringByAppendingString:[NSString stringWithFormat:@"( key - %d )", keyFrameCount++]];
+        self.keyFrameInterval = totalCount - lastKeyFrameCount;
+        lastKeyFrameCount = totalCount;
+        log = [log stringByAppendingString:[NSString stringWithFormat:@"( key - %d )", self.keyFrameCount++]];
+        NSLog(@"%@", log);
     }
-    NSLog(@"%@", log);
     
     if (fileHandle != NULL)
     {
@@ -93,8 +100,8 @@
 - (void)gotCompressedSampleBuffer:(CMSampleBufferRef) sampleBuffer
 {
     static int sampleCount = 1;
-    NSLog(@" = = = = = = = >> %d", sampleCount++);
-    [compressedVideoSamples addObject:(__bridge id _Nonnull)(sampleBuffer)];
+    //NSLog(@" = = = = = = = >> %d", sampleCount++);
+    [self.compressedVideoSamples addObject:(__bridge id _Nonnull)(sampleBuffer)];
 }
 
 #pragma mark private
@@ -131,24 +138,24 @@
     NSError * error = nil;
     [[NSFileManager defaultManager] removeItemAtURL:[NSURL fileURLWithPath:finalPath] error:nil];
     
-    assetWriter = [[AVAssetWriter alloc] initWithURL:[NSURL fileURLWithPath:finalPath] fileType:AVFileTypeQuickTimeMovie error:&error];
-    NSParameterAssert(assetWriter);
+    self.assetWriter = [[AVAssetWriter alloc] initWithURL:[NSURL fileURLWithPath:finalPath] fileType:AVFileTypeQuickTimeMovie error:&error];
+    NSParameterAssert(self.assetWriter);
     
     //如果输入源是已经编码过的，setting参数必须为nil
-    videoWriterInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo outputSettings:nil];
-    if ([assetWriter canAddInput:videoWriterInput]) {
-        [assetWriter addInput:videoWriterInput];
+    self.videoWriterInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo outputSettings:nil];
+    if ([self.assetWriter canAddInput:self.videoWriterInput]) {
+        [self.assetWriter addInput:self.videoWriterInput];
     }else{
         return NO;
     }
 
-    audioWriterInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeAudio outputSettings:nil];
-    if ([assetWriter canAddInput:audioWriterInput]) {
-        [assetWriter addInput:audioWriterInput];
+    self.audioWriterInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeAudio outputSettings:nil];
+    if ([self.assetWriter canAddInput:self.audioWriterInput]) {
+        [self.assetWriter addInput:self.audioWriterInput];
     }else{
         return NO;
     }
-    NSLog(@"assetWriter output file type: %@", assetWriter.outputFileType);
+    NSLog(@"assetWriter output file type: %@", self.assetWriter.outputFileType);
     return YES;
 }
 
@@ -156,7 +163,7 @@
 {
     NSError * error;
     AVAsset *asset = [AVAsset assetWithURL:[NSURL fileURLWithPath:sourceFilePath]];
-    assetReader = [AVAssetReader assetReaderWithAsset:asset error:&error];
+    self.assetReader = [AVAssetReader assetReaderWithAsset:asset error:&error];
     if (error) {
         NSLog(@"Error creating Asset Reader: %@", [error description]);
         return NO;
@@ -169,10 +176,10 @@
     NSString* key = (NSString*)kCVPixelBufferPixelFormatTypeKey;
     NSNumber* val = [NSNumber numberWithUnsignedInt:kCVPixelFormatType_420YpCbCr8BiPlanarFullRange];
     NSDictionary* videoSettings = [NSDictionary dictionaryWithObject:val forKey:key];
-    videoTrackOutput = [AVAssetReaderTrackOutput assetReaderTrackOutputWithTrack:videoTrack outputSettings:videoSettings];
+    self.videoTrackOutput = [AVAssetReaderTrackOutput assetReaderTrackOutputWithTrack:videoTrack outputSettings:videoSettings];
     
-    if ([assetReader canAddOutput:videoTrackOutput]) {
-        [assetReader addOutput:videoTrackOutput];
+    if ([self.assetReader canAddOutput:self.videoTrackOutput]) {
+        [self.assetReader addOutput:self.videoTrackOutput];
     }else{
         return NO;
     }
@@ -182,16 +189,16 @@
     AVAssetTrack *audioTrack = (AVAssetTrack *)[audioTracks firstObject];
     NSLog(@"frameRate : %f", audioTrack.nominalFrameRate);
     NSLog(@"timeScale : %d", audioTrack.naturalTimeScale);
-    audioTrackOutput = [AVAssetReaderTrackOutput assetReaderTrackOutputWithTrack:audioTrack outputSettings:nil];
+    self.audioTrackOutput = [AVAssetReaderTrackOutput assetReaderTrackOutputWithTrack:audioTrack outputSettings:nil];
     
-    if ([assetReader canAddOutput:audioTrackOutput]) {
-        [assetReader addOutput:audioTrackOutput];
+    if ([self.assetReader canAddOutput:self.audioTrackOutput]) {
+        [self.assetReader addOutput:self.audioTrackOutput];
     }else{
         return NO;
     }
     
-    NSLog(@"mediaType(audio:%@, video:%@)", audioTrackOutput.mediaType, videoTrackOutput.mediaType);
-    BOOL didStart = [assetReader startReading];
+    NSLog(@"mediaType(audio:%@, video:%@)", self.audioTrackOutput.mediaType, self.videoTrackOutput.mediaType);
+    BOOL didStart = [self.assetReader startReading];
     return didStart;
 }
 
@@ -204,7 +211,7 @@
     h264Encoder.delegate = self;
     
     NSLog(@"================ start convert == video ================");
-    CMSampleBufferRef sampleBuffer = [videoTrackOutput copyNextSampleBuffer];
+    CMSampleBufferRef sampleBuffer = [self.videoTrackOutput copyNextSampleBuffer];
     if (!sampleBuffer) {
         NSLog(@"Error Can not read video sample buffer");
         [self carolEndWork];
@@ -215,48 +222,49 @@
         if (sampleBuffer) {
             sourceFileSampleCount++;
             [h264Encoder encode:sampleBuffer];
-            if (sourceFileSampleCount > 1000 || assetReader.status != AVAssetReaderStatusReading) {
+            if (sourceFileSampleCount > 1000 || self.assetReader.status != AVAssetReaderStatusReading) {
                 //7秒视频190帧
                 sampleBuffer = nil;
                 break;
             }else{
-                sampleBuffer = [videoTrackOutput copyNextSampleBuffer];
+                sampleBuffer = [self.videoTrackOutput copyNextSampleBuffer];
             }
         }else{
-            if (assetReader.status == AVAssetReaderStatusFailed){
-                NSLog(@"Asset Reader failed with error: %@", [[assetReader error] description]);
-            } else if (assetReader.status == AVAssetReaderStatusCompleted){
+            if (self.assetReader.status == AVAssetReaderStatusFailed){
+                NSLog(@"Asset Reader failed with error: %@", [[self.assetReader error] description]);
+            } else if (self.assetReader.status == AVAssetReaderStatusCompleted){
                 NSLog(@"Reached the end of the video.");
                 NSLog(@"================ end ====== frame count %d ===========", sourceFileSampleCount);
             } else{
-                NSLog(@"================ end (%ld) ====== frame count %d ===========", (long)assetReader.status, sourceFileSampleCount);
+                NSLog(@"================ end (%ld) ====== frame count %d ===========", (long)self.assetReader.status, sourceFileSampleCount);
             }
             break;
         }
     }
     
-    [assetWriter startWriting];
-    [assetWriter startSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp((__bridge CMSampleBufferRef)compressedVideoSamples[0])];
+    WEAK_OBJ_REF(self);
+    [self.assetWriter startWriting];
+    [self.assetWriter startSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp((__bridge CMSampleBufferRef)self.compressedVideoSamples[0])];
     static int videoSampleCount = 0;
-    [videoWriterInput requestMediaDataWhenReadyOnQueue:writeQueue usingBlock:^{
-        while ([videoWriterInput isReadyForMoreMediaData])
+    [self.videoWriterInput requestMediaDataWhenReadyOnQueue:writeQueue usingBlock:^{
+        while ([weak_self.videoWriterInput isReadyForMoreMediaData])
         {
-            CMSampleBufferRef nextSampleBuffer = [self nextVideoSampleBufferToWrite];
+            CMSampleBufferRef nextSampleBuffer = [weak_self nextVideoSampleBufferToWrite];
             if (nextSampleBuffer)
             {
                 videoSampleCount++;
-                [videoWriterInput appendSampleBuffer:nextSampleBuffer];
+                [weak_self.videoWriterInput appendSampleBuffer:nextSampleBuffer];
                 //CFRelease(nextSampleBuffer);
             }
             else
             {
-                [videoWriterInput markAsFinished];
+                [weak_self.videoWriterInput markAsFinished];
                 NSLog(@"======= end video (%d)", videoSampleCount);
-                if (oneTrackHasFinishWrite) {
-                    [assetWriter endSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp((__bridge CMSampleBufferRef)compressedVideoSamples[compressedVideoSamples.count - 1])];
-                    [self carolEndWork];
+                if (weak_self.oneTrackHasFinishWrite) {
+                    [weak_self.assetWriter endSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp((__bridge CMSampleBufferRef)weak_self.compressedVideoSamples[weak_self.compressedVideoSamples.count - 1])];
+                    [weak_self carolEndWork];
                 }else{
-                    oneTrackHasFinishWrite = YES;
+                    weak_self.oneTrackHasFinishWrite = YES;
                 }
                 break;
             }
@@ -264,25 +272,25 @@
     }];
     
     static int audioSampleCount = 0;
-    [audioWriterInput requestMediaDataWhenReadyOnQueue:writeQueue usingBlock:^{
-        while ([audioWriterInput isReadyForMoreMediaData])
+    [self.audioWriterInput requestMediaDataWhenReadyOnQueue:writeQueue usingBlock:^{
+        while ([weak_self.audioWriterInput isReadyForMoreMediaData])
         {
-            CMSampleBufferRef nextSampleBuffer = [self nextAudioSampleBufferToWrite];
+            CMSampleBufferRef nextSampleBuffer = [weak_self nextAudioSampleBufferToWrite];
             if (nextSampleBuffer)
             {
                 audioSampleCount++;
-                [audioWriterInput appendSampleBuffer:nextSampleBuffer];
+                [weak_self.audioWriterInput appendSampleBuffer:nextSampleBuffer];
                 CFRelease(nextSampleBuffer);
             }
             else
             {
-                [audioWriterInput markAsFinished];
+                [weak_self.audioWriterInput markAsFinished];
                 NSLog(@"======= end audio (%d)", audioSampleCount);
-                if (oneTrackHasFinishWrite) {
-                    [assetWriter endSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp((__bridge CMSampleBufferRef)compressedVideoSamples[compressedVideoSamples.count - 1])];
-                    [self carolEndWork];
+                if (weak_self.oneTrackHasFinishWrite) {
+                    [weak_self.assetWriter endSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp((__bridge CMSampleBufferRef)weak_self.compressedVideoSamples[weak_self.compressedVideoSamples.count - 1])];
+                    [weak_self carolEndWork];
                 }else{
-                    oneTrackHasFinishWrite = YES;
+                    weak_self.oneTrackHasFinishWrite = YES;
                 }
                 break;
             }
@@ -297,30 +305,35 @@
     [fileHandle closeFile];
     fileHandle = NULL;
     
-    [assetWriter finishWritingWithCompletionHandler:^{
+    [self.assetWriter finishWritingWithCompletionHandler:^{
         NSArray * paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
         NSString * documentsDirectory = [paths objectAtIndex:0];
         NSString * finalPath = [documentsDirectory stringByAppendingPathComponent:@"final.mov"];
         if ([[NSFileManager defaultManager] fileExistsAtPath:finalPath]) {
             NSFileHandle * mp4FileHandle = [NSFileHandle fileHandleForReadingAtPath:finalPath];
             NSLog(@">>>>>>> mov file  size ( %lld ) >>>>>", [mp4FileHandle seekToEndOfFile]);
+            NSLog(@"keyFrameCount: %d", self.keyFrameCount - 1);
+            NSLog(@"keyFrameInterval: %d", self.keyFrameInterval);
             [mp4FileHandle closeFile];
         }
         NSLog(@" == DONE ==");
     }];
-//    for (id obj in compressedVideoSamples) {
+//    for (id obj in self.compressedVideoSamples) {
 //        CFRelease((__bridge CMSampleBufferRef)obj);
 //    }
-    [compressedVideoSamples removeAllObjects];
+    [self.compressedVideoSamples removeAllObjects];
 }
 
 - (CMSampleBufferRef)nextVideoSampleBufferToWrite
 {
-    int totalSamples = (int)compressedVideoSamples.count;
+    int totalSamples = (int)self.compressedVideoSamples.count;
     static int currVideoCount = 0;
-    NSLog(@"+++ ask for video : %d", currVideoCount);
+    //NSLog(@"+++ ask for video : %d", currVideoCount);
     if (currVideoCount < totalSamples) {
-        return (__bridge CMSampleBufferRef)(compressedVideoSamples[currVideoCount++]);
+        CMSampleBufferRef sampleBuffer = (__bridge CMSampleBufferRef)(self.compressedVideoSamples[currVideoCount++]);
+        CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+        //NSLog(@"PTS:%lld",  presentationTimeStamp.value);
+        return sampleBuffer;
     }
     return nil;
 }
@@ -328,8 +341,11 @@
 - (CMSampleBufferRef)nextAudioSampleBufferToWrite
 {
     static int askedAudioCount = 0;
-    NSLog(@"--- ask for audio : %d", askedAudioCount++);
-    return [audioTrackOutput copyNextSampleBuffer];
+    //NSLog(@"--- ask for audio : %d", askedAudioCount++);
+    CMSampleBufferRef sampleBuffer = [self.audioTrackOutput copyNextSampleBuffer];
+    CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+    NSLog(@"PTS:%lld",  presentationTimeStamp.value);
+    return sampleBuffer;
 }
 
 

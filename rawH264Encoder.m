@@ -49,7 +49,7 @@
         CMTime decodeTimeStamp = CMSampleBufferGetDecodeTimeStamp(sampleBuffer);
         CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
         CMTime duration = CMSampleBufferGetDuration(sampleBuffer);
-        NSLog(@" %d ===> %lld, %d, %lld", inputFrameCount, presentationTimeStamp.value, presentationTimeStamp.timescale, presentationTimeStamp.value/presentationTimeStamp.timescale);
+        NSLog(@" %d ===> PTS:%lld, DTS:%d", inputFrameCount, presentationTimeStamp.value, presentationTimeStamp.timescale);
         VTEncodeInfoFlags flags;
         
         // Pass it to the encoder
@@ -111,7 +111,7 @@
         float quality = 0.5; //not much relate to output file size
         VTSessionSetProperty(EncodingSession, kVTCompressionPropertyKey_Quality, CFNumberCreate(NULL, kCFNumberFloatType, &quality));
         
-        int32_t nominalFrameRate = 24; //larger value leads to less key frame and smaller output file size
+        int32_t nominalFrameRate = 40; //larger value leads to less key frame and smaller output file size
         VTSessionSetProperty(EncodingSession, kVTCompressionPropertyKey_ExpectedFrameRate, CFNumberCreate(NULL, kCFNumberSInt32Type, &nominalFrameRate));
         
         int maxKeyFrameInterval = nominalFrameRate*2;
