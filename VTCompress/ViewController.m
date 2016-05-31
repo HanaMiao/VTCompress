@@ -45,6 +45,7 @@
 @property (strong, nonatomic)NSDictionary * videoSettings;
 @property (strong, nonatomic)NSDictionary * audioSettings;
 @property (assign, nonatomic)NSInteger currentFileIndex;
+@property (assign, nonatomic)CGAffineTransform transform;
 
 @end
 
@@ -75,25 +76,13 @@
     self.ifReduceFrame = NO;
     self.ifUseToolBox = NO;
     
-    self.sourceFileNames = [NSArray arrayWithObjects:@"daemon", @"book", @"roadA", @"raodB", nil];
+    self.sourceFileNames = [NSArray arrayWithObjects:@"daemon", @"book", @"roadA", @"roadB", nil];
     self.lastVideoPTS = [NSArray arrayWithObjects:@(130048), @(5703), @(5463), @(5883), nil];
     self.lastAudioPTS = [NSArray arrayWithObjects:@(464111), @(413623), @(401344), @(425920), nil];
-    self.widthAndHeight = @[@{@"width": @(360), @"height":@(480)},
+    self.widthAndHeight = @[@{@"width": @(360), @"height":@(640)},
                             @{@"width": @(640), @"height":@(360)},
                             @{@"width": @(640), @"height":@(360)},
                             @{@"width": @(640), @"height":@(360)},];
-
-    self.videoSettings = @{
-                           AVVideoCodecKey : AVVideoCodecH264,
-                           AVVideoHeightKey : @(360),
-                           AVVideoWidthKey : @(640),
-                           AVVideoCompressionPropertiesKey: @{
-                                   AVVideoProfileLevelKey : AVVideoProfileLevelH264High41,
-                                   AVVideoAverageBitRateKey : @(800000),
-//                                   AVVideoMaxKeyFrameIntervalKey : @(60),
-                                   AVVideoMaxKeyFrameIntervalDurationKey : @(2.0),
-                                   }
-                           };
     
     // Configure the channel layout as mono.
     AudioChannelLayout monoChannelLayout = {
@@ -112,6 +101,20 @@
                            AVEncoderBitRateKey : @(48000),
                            AVChannelLayoutKey  : channelLayoutAsData,
                            };
+}
+
+- (NSDictionary *)videoSettings{
+    return @{
+             AVVideoCodecKey : AVVideoCodecH264,
+             AVVideoWidthKey : [self.widthAndHeight[self.currentFileIndex] objectForKey:@"width"],
+             AVVideoHeightKey : [self.widthAndHeight[self.currentFileIndex] objectForKey:@"height"],
+             AVVideoCompressionPropertiesKey: @{
+                     AVVideoProfileLevelKey : AVVideoProfileLevelH264Main30,
+                     AVVideoAverageBitRateKey : @(800000),
+                     //                                   AVVideoMaxKeyFrameIntervalKey : @(60),
+                     AVVideoMaxKeyFrameIntervalDurationKey : @(2.0),
+                     }
+             };
 }
 
 - (void)reset
@@ -163,17 +166,16 @@
 #pragma mark <rawH264EncoderDelegate>
 - (void)gotSpsPps:(NSData*)sps pps:(NSData*)pps
 {
-    if (!_ifSaveH464File) {
-        return;
+    if (_ifSaveH464File && fileHandle) {
+        //NSLog(@"gotSpsPps %d %d", (int)[sps length], (int)[pps length]);
+        const char bytes[] = "\x00\x00\x00\x01";
+        size_t length = (sizeof bytes) - 1; //string literals have implicit trailing '\0'
+        NSData *ByteHeader = [NSData dataWithBytes:bytes length:length];
+        [fileHandle writeData:ByteHeader];
+        [fileHandle writeData:sps];
+        [fileHandle writeData:ByteHeader];
+        [fileHandle writeData:pps];
     }
-    //NSLog(@"gotSpsPps %d %d", (int)[sps length], (int)[pps length]);
-    const char bytes[] = "\x00\x00\x00\x01";
-    size_t length = (sizeof bytes) - 1; //string literals have implicit trailing '\0'
-    NSData *ByteHeader = [NSData dataWithBytes:bytes length:length];
-    [fileHandle writeData:ByteHeader];
-    [fileHandle writeData:sps];
-    [fileHandle writeData:ByteHeader];
-    [fileHandle writeData:pps];
 }
 
 - (void)gotEncodedData:(NSData*)data isKeyFrame:(BOOL)isKeyFrame
@@ -215,22 +217,25 @@
     NSFileManager *fileManager = [NSFileManager defaultManager];
     NSString *documentsDirectory = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) objectAtIndex:0];
     
-    h264FilePath = [documentsDirectory stringByAppendingPathComponent:@"result.h264"];
-    [fileManager removeItemAtPath:h264FilePath error:nil];
-    [fileManager createFileAtPath:h264FilePath contents:nil attributes:nil];
-    fileHandle = [NSFileHandle fileHandleForWritingAtPath:h264FilePath];
+    if (_ifSaveH464File) {
+        h264FilePath = [documentsDirectory stringByAppendingPathComponent:@"result.h264"];
+        [fileManager removeItemAtPath:h264FilePath error:nil];
+        [fileManager createFileAtPath:h264FilePath contents:nil attributes:nil];
+        fileHandle = [NSFileHandle fileHandleForWritingAtPath:h264FilePath];
+    }
     
     NSString *sourceFileName = self.sourceFileNames[self.currentFileIndex];
     NSString *originPath=[[NSBundle mainBundle] pathForResource:sourceFileName ofType:@"mp4"];
     sourceFilePath = [documentsDirectory stringByAppendingPathComponent:[sourceFileName stringByAppendingString:@".mp4"]];
-    [[NSFileManager defaultManager] removeItemAtPath:sourceFilePath error:nil];
-    [[NSFileManager defaultManager] copyItemAtURL:[NSURL fileURLWithPath:originPath] toURL:[NSURL fileURLWithPath:sourceFilePath] error:&error];
-    if (error) {
-        NSLog(@"copy file fail: %@", [error description]);
-        return;
+    if (![[NSFileManager defaultManager] fileExistsAtPath:sourceFilePath]) {
+        [[NSFileManager defaultManager] copyItemAtURL:[NSURL fileURLWithPath:originPath] toURL:[NSURL fileURLWithPath:sourceFilePath] error:&error];
+        if (error) {
+            NSLog(@"copy file fail: %@", [error description]);
+            return;
+        }
     }else{
         NSFileHandle * documentFile = [NSFileHandle fileHandleForReadingAtPath:sourceFilePath];
-        NSLog(@"copy file success (file size: %lld )\n %@", [documentFile seekToEndOfFile], sourceFilePath);
+        NSLog(@"Source File (file size: %lld )\n %@", [documentFile seekToEndOfFile], sourceFilePath);
         [documentFile closeFile];
     }
 }
@@ -247,6 +252,7 @@
     NSParameterAssert(self.assetWriter);
     
     self.videoWriterInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo outputSettings:self.videoSettings];
+    self.videoWriterInput.transform = self.transform;
     if ([self.assetWriter canAddInput:self.videoWriterInput]) {
         [self.assetWriter addInput:self.videoWriterInput];
     }else{
@@ -279,6 +285,7 @@
     NSLog(@"timeScale : %d", videoTrack.naturalTimeScale);
     
     NSArray *videoFormatDescriptions = [videoTrack formatDescriptions];
+    self.transform = [videoTrack preferredTransform];
     
     NSString* key = (NSString*)kCVPixelBufferPixelFormatTypeKey;
     NSNumber* val = [NSNumber numberWithUnsignedInt:kCVPixelFormatType_422YpCbCr8];
@@ -408,9 +415,11 @@
 - (void)carolEndWork
 {
     [h264Encoder finish];
-    NSLog(@">>>>>>> h265 file size ( %lld ) >>>>>", [fileHandle seekToEndOfFile]);
-    [fileHandle closeFile];
-    fileHandle = NULL;
+    if (_ifSaveH464File) {
+        NSLog(@">>>>>>> h265 file size ( %lld ) >>>>>", [fileHandle seekToEndOfFile]);
+        [fileHandle closeFile];
+        fileHandle = NULL;
+    }
     
     [self.assetWriter finishWritingWithCompletionHandler:^{
         NSArray * paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
@@ -431,10 +440,10 @@
             [self performSelectorOnMainThread:@selector(carolStartWithOutToolBox) withObject:nil waitUntilDone:NO];
         }
     }];
-//    for (id obj in self.compressedVideoSamples) {
-//        CFRelease((__bridge CMSampleBufferRef)obj);
-//    }
-    [self.compressedVideoSamples removeAllObjects];
+    for (id obj in self.compressedVideoSamples) {
+        CFRelease((__bridge CMSampleBufferRef)obj);
+    }
+    self.compressedVideoSamples = nil;
 }
 
 - (CMSampleBufferRef)nextVideoSampleBufferToWrite
@@ -467,7 +476,6 @@
             CMSampleBufferRef sampleBuffer = (__bridge CMSampleBufferRef)(self.compressedVideoSamples[currVideoCount++]);
             CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
             //NSLog(@"V - > PTS:%lld",  presentationTimeStamp.value);
-            //海边视频总PPS：130048
             NSInteger lastVideoPTS = (NSInteger)self.lastVideoPTS[self.currentFileIndex];
             if (self.if7Second && presentationTimeStamp.value > lastVideoPTS * 0.75) {
                 return nil;
@@ -489,10 +497,6 @@
     }
     CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
     NSLog(@"0 - >PTS:%lld",  presentationTimeStamp.value);
-    //音频总PPS：464111
-//    if (currAudioCount > 48) {
-//        return nil;
-//    }
     NSInteger lastAudioPTS = (NSInteger)self.lastAudioPTS[self.currentFileIndex];
     if (self.if7Second && presentationTimeStamp.value > lastAudioPTS * 0.75) {
         return nil;
@@ -512,14 +516,12 @@
     CMSampleBufferRef firstSample = [self nextVideoSampleBufferToWrite];
     [self.assetWriter startSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp(firstSample)];
     
-    //dispatch_group_t encodingGroup = dispatch_group_create();
-    //dispatch_group_enter(encodingGroup);
     WEAK_OBJ_REF(self);
     [self.videoWriterInput requestMediaDataWhenReadyOnQueue:writeQueue usingBlock:^{
         while ([weak_self.videoWriterInput isReadyForMoreMediaData])
         {
             @try {
-                static CMSampleBufferRef videoNextBuff = nil;
+                CMSampleBufferRef videoNextBuff = nil;
                 static BOOL hasProcessFirstSample = NO;
                 if (!hasProcessFirstSample) {
                     videoNextBuff = firstSample;
@@ -546,7 +548,6 @@
                     }else{
                         weak_self.oneTrackHasFinishWrite = YES;
                     }
-                    //dispatch_group_leave(encodingGroup);
                     break;
                 }
             } @catch (NSException *exception) {
@@ -558,7 +559,6 @@
         }
     }];
     
-    //dispatch_group_enter(encodingGroup);
     [self.audioWriterInput requestMediaDataWhenReadyOnQueue:writeQueue usingBlock:^{
         while ([weak_self.audioWriterInput isReadyForMoreMediaData])
         {
@@ -580,13 +580,10 @@
                 }else{
                     weak_self.oneTrackHasFinishWrite = YES;
                 }
-                //dispatch_group_leave(encodingGroup);
                 break;
             }
         }
     }];
-
-    //dispatch_group_wait(encodingGroup, DISPATCH_TIME_FOREVER);
 }
 
 - (dispatch_queue_t)encodingQueue
