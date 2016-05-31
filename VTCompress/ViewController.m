@@ -43,6 +43,7 @@
 @property (strong, nonatomic)NSArray * lastVideoPTS;
 @property (strong, nonatomic)NSArray * lastAudioPTS;
 @property (strong, nonatomic)NSArray * widthAndHeight;
+@property (strong, nonatomic)NSArray * reduceFrameIntervals;
 @property (strong, nonatomic)NSDictionary * videoSettings;
 @property (strong, nonatomic)NSDictionary * audioSettings;
 @property (assign, nonatomic)NSInteger currentFileIndex;
@@ -74,12 +75,13 @@
     self.outputAudioFrameCount = 0;
     self.ifSaveH464File = NO;
     self.if7Second = YES;
-    self.ifReduceFrame = NO;
+    self.ifReduceFrame = YES;
     self.ifUseToolBox = NO;
     
     self.sourceFileNames = [NSArray arrayWithObjects:@"daemon", @"book", @"roadA", @"roadB", nil];
     self.lastVideoPTS = [NSArray arrayWithObjects:@(130048), @(5703), @(5463), @(5883), nil];
     self.lastAudioPTS = [NSArray arrayWithObjects:@(464111), @(413623), @(401344), @(425920), nil];
+    self.reduceFrameIntervals = [NSArray arrayWithObjects:@(5), @(3), @(3), @(3), nil];
     self.widthAndHeight = @[@{@"width": @(360), @"height":@(640)},
                             @{@"width": @(640), @"height":@(360)},
                             @{@"width": @(640), @"height":@(360)},
@@ -112,7 +114,7 @@
              AVVideoCompressionPropertiesKey: @{
                      AVVideoProfileLevelKey : AVVideoProfileLevelH264Main30,
                      AVVideoAverageBitRateKey : @(800000),
-                     //                                   AVVideoMaxKeyFrameIntervalKey : @(60),
+                     //AVVideoMaxKeyFrameIntervalKey : @(40),
                      AVVideoMaxKeyFrameIntervalDurationKey : @(2.0),
                      }
              };
@@ -450,7 +452,7 @@
             NSLog(@"encodeAudioFrame: %d", self.outputAudioFrameCount);
             [mp4FileHandle closeFile];
         }
-        NSLog(@" == DONE (%ld) ==", (long)self.currentFileIndex);
+        NSLog(@" == DONE (%ld) ==\n\n", (long)self.currentFileIndex);
         self.currentFileIndex += 1;
         if (self.currentFileIndex < self.sourceFileNames.count) {
             [self performSelectorOnMainThread:@selector(carolStartWithOutToolBox) withObject:nil waitUntilDone:NO];
@@ -468,12 +470,13 @@
         static int currVideoCount = 0;
         CMSampleBufferRef sampleBuffer = [self.videoTrackOutput copyNextSampleBuffer];
         currVideoCount++;
-        if (self.ifReduceFrame && currVideoCount % 5 == 0) {
+        if (self.ifReduceFrame && currVideoCount % ((NSString *)self.reduceFrameIntervals[self.currentFileIndex]).integerValue == 0) {
+            CFRelease(sampleBuffer);
             sampleBuffer = [self.videoTrackOutput copyNextSampleBuffer];
             currVideoCount++;
         }
         CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-        NSLog(@"V - >PTS:%lld",  presentationTimeStamp.value);
+        //NSLog(@"V - >PTS:%lld",  presentationTimeStamp.value);
         NSString * lastVideoPTS = (NSString *)self.lastVideoPTS[self.currentFileIndex];
         if (self.if7Second && presentationTimeStamp.value > lastVideoPTS.integerValue * 0.75) {
             return nil;
@@ -485,7 +488,7 @@
     }else{
         int totalSamples = (int)self.compressedVideoSamples.count;
         static int currVideoCount = 1;
-        if (self.ifReduceFrame && currVideoCount % 5 == 0) {
+        if (self.ifReduceFrame && currVideoCount % ((NSString *)self.reduceFrameIntervals[self.currentFileIndex]).integerValue == 0) {
             currVideoCount ++;
         }
         if (currVideoCount < totalSamples) {
@@ -507,12 +510,13 @@
     static int currAudioCount = 0;
     CMSampleBufferRef sampleBuffer = [self.audioTrackOutput copyNextSampleBuffer];
     currAudioCount++;
-    if (self.ifReduceFrame && currAudioCount % 5 == 0) {
+    if (self.ifReduceFrame && currAudioCount % ((NSString *)self.reduceFrameIntervals[self.currentFileIndex]).integerValue == 0) {
+        CFRelease(sampleBuffer);
         sampleBuffer = [self.audioTrackOutput copyNextSampleBuffer];
         currAudioCount++;
     }
     CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-    NSLog(@"0 - >PTS:%lld",  presentationTimeStamp.value);
+    //NSLog(@"a - >PTS:%lld",  presentationTimeStamp.value);
     NSString * lastAudioPTS = (NSString *)self.lastAudioPTS[self.currentFileIndex];
     if (self.if7Second && presentationTimeStamp.value > lastAudioPTS.integerValue * 0.75) {
         return nil;
@@ -550,7 +554,7 @@
                     [weak_self.videoWriterInput appendSampleBuffer:videoNextBuff];
                     CFRelease(videoNextBuff);
                     weak_self.outputVideoFrameCount++;
-                    NSLog(@"v -> %d", weak_self.outputVideoFrameCount);
+                    //NSLog(@"video -> %d", weak_self.outputVideoFrameCount);
                 }
                 else
                 {
@@ -582,7 +586,7 @@
             if (audioNextBuff)
             {
                 weak_self.outputAudioFrameCount++;
-                NSLog(@"audio -> %d", weak_self.outputAudioFrameCount);
+                //NSLog(@"audio -> %d", weak_self.outputAudioFrameCount);
                 [weak_self.audioWriterInput appendSampleBuffer:audioNextBuff];
                 CFRelease(audioNextBuff);
             }
