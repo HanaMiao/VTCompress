@@ -15,6 +15,7 @@
 @interface ViewController ()<rawH264EncoderDelegate>
 
 @property (weak, nonatomic) IBOutlet UIButton *goButton;
+@property (weak, nonatomic) IBOutlet UIButton *deleteOriginFileButton;
 @property (strong, nonatomic)AVAssetReader *assetReader;
 @property (strong, nonatomic)AVAssetReaderTrackOutput *videoTrackOutput;
 @property (strong, nonatomic)AVAssetReaderTrackOutput *audioTrackOutput;
@@ -72,7 +73,7 @@
     self.outputVideoFrameCount = 0;
     self.outputAudioFrameCount = 0;
     self.ifSaveH464File = NO;
-    self.if7Second = NO;
+    self.if7Second = YES;
     self.ifReduceFrame = NO;
     self.ifUseToolBox = NO;
     
@@ -163,6 +164,21 @@
     return;
 }
 
+- (IBAction)clidkDeleteFile:(id)sender {
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSString *documentsDirectory = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) objectAtIndex:0];
+    NSError * error = nil;
+    for (NSString * sourceFileName in self.sourceFileNames) {
+        NSString * filePath = [documentsDirectory stringByAppendingPathComponent:[sourceFileName stringByAppendingString:@".mp4"]];
+        if ([fileManager fileExistsAtPath:filePath]) {
+            [fileManager removeItemAtPath:filePath error:&error];
+            if (error) {
+                NSLog(@"remove file -%@-  error :%@", filePath, error.description);
+            }
+        }
+    }
+}
+
 #pragma mark <rawH264EncoderDelegate>
 - (void)gotSpsPps:(NSData*)sps pps:(NSData*)pps
 {
@@ -227,8 +243,8 @@
     NSString *sourceFileName = self.sourceFileNames[self.currentFileIndex];
     NSString *originPath=[[NSBundle mainBundle] pathForResource:sourceFileName ofType:@"mp4"];
     sourceFilePath = [documentsDirectory stringByAppendingPathComponent:[sourceFileName stringByAppendingString:@".mp4"]];
-    if (![[NSFileManager defaultManager] fileExistsAtPath:sourceFilePath]) {
-        [[NSFileManager defaultManager] copyItemAtURL:[NSURL fileURLWithPath:originPath] toURL:[NSURL fileURLWithPath:sourceFilePath] error:&error];
+    if (![fileManager fileExistsAtPath:sourceFilePath]) {
+        [fileManager copyItemAtURL:[NSURL fileURLWithPath:originPath] toURL:[NSURL fileURLWithPath:sourceFilePath] error:&error];
         if (error) {
             NSLog(@"copy file fail: %@", [error description]);
             return;
@@ -458,8 +474,8 @@
         }
         CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
         NSLog(@"V - >PTS:%lld",  presentationTimeStamp.value);
-        NSInteger lastVideoPTS = (NSInteger)self.lastVideoPTS[self.currentFileIndex];
-        if (self.if7Second && presentationTimeStamp.value > lastVideoPTS * 0.75) {
+        NSString * lastVideoPTS = (NSString *)self.lastVideoPTS[self.currentFileIndex];
+        if (self.if7Second && presentationTimeStamp.value > lastVideoPTS.integerValue * 0.75) {
             return nil;
         }
         if (sampleBuffer) {
@@ -476,8 +492,8 @@
             CMSampleBufferRef sampleBuffer = (__bridge CMSampleBufferRef)(self.compressedVideoSamples[currVideoCount++]);
             CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
             //NSLog(@"V - > PTS:%lld",  presentationTimeStamp.value);
-            NSInteger lastVideoPTS = (NSInteger)self.lastVideoPTS[self.currentFileIndex];
-            if (self.if7Second && presentationTimeStamp.value > lastVideoPTS * 0.75) {
+            NSString * lastVideoPTS = (NSString *)self.lastVideoPTS[self.currentFileIndex];
+            if (self.if7Second && presentationTimeStamp.value > lastVideoPTS.integerValue * 0.75) {
                 return nil;
             }
             return sampleBuffer;
@@ -497,8 +513,8 @@
     }
     CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
     NSLog(@"0 - >PTS:%lld",  presentationTimeStamp.value);
-    NSInteger lastAudioPTS = (NSInteger)self.lastAudioPTS[self.currentFileIndex];
-    if (self.if7Second && presentationTimeStamp.value > lastAudioPTS * 0.75) {
+    NSString * lastAudioPTS = (NSString *)self.lastAudioPTS[self.currentFileIndex];
+    if (self.if7Second && presentationTimeStamp.value > lastAudioPTS.integerValue * 0.75) {
         return nil;
     }
     return sampleBuffer;

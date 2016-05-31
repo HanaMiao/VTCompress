@@ -10,11 +10,11 @@
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "VTCompress/ViewController.m"
-            timestampString = "486384669.944993"
+            timestampString = "486385979.184128"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "438"
-            endingLineNumber = "438"
+            startingLineNumber = "454"
+            endingLineNumber = "454"
             landmarkName = "-carolEndWork"
             landmarkType = "5">
          </BreakpointContent>
@@ -26,11 +26,11 @@
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "VTCompress/ViewController.m"
-            timestampString = "486384669.944993"
+            timestampString = "486385979.184128"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "509"
-            endingLineNumber = "509"
+            startingLineNumber = "525"
+            endingLineNumber = "525"
             landmarkName = "-carolStartWithOutToolBox"
             landmarkType = "5">
          </BreakpointContent>
@@ -52,11 +52,11 @@
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "VTCompress/ViewController.m"
-            timestampString = "486384669.944993"
+            timestampString = "486385979.184128"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "230"
-            endingLineNumber = "230"
+            startingLineNumber = "246"
+            endingLineNumber = "246"
             landmarkName = "-prepareFile"
             landmarkType = "5">
          </BreakpointContent>
@@ -64,16 +64,16 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            shouldBeEnabled = "Yes"
+            shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "VTCompress/ViewController.m"
-            timestampString = "486384669.944993"
+            timestampString = "486385979.184128"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "290"
-            endingLineNumber = "290"
-            landmarkName = "-startAssetReader"
+            startingLineNumber = "270"
+            endingLineNumber = "270"
+            landmarkName = "-prepareWriter"
             landmarkType = "5">
          </BreakpointContent>
       </BreakpointProxy>
@@ -84,12 +84,28 @@
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "VTCompress/ViewController.m"
-            timestampString = "486384658.130337"
+            timestampString = "486385979.184128"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "254"
-            endingLineNumber = "254"
-            landmarkName = "-prepareWriter"
+            startingLineNumber = "478"
+            endingLineNumber = "478"
+            landmarkName = "-nextVideoSampleBufferToWrite"
+            landmarkType = "5">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "VTCompress/ViewController.m"
+            timestampString = "486385982.699894"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "168"
+            endingLineNumber = "168"
+            landmarkName = "-clidkDeleteFile:"
             landmarkType = "5">
          </BreakpointContent>
       </BreakpointProxy>

@@ -24,14 +24,24 @@
                                     <action selector="clickGo:" destination="BYZ-38-t0r" eventType="touchUpInside" id="BsZ-oS-N0Y"/>
                                 </connections>
                             </button>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="Wyn-Mp-4ru">
+                                <rect key="frame" x="241" y="420" width="118" height="30"/>
+                                <state key="normal" title="Delete Origin File"/>
+                                <connections>
+                                    <action selector="clidkDeleteFile:" destination="BYZ-38-t0r" eventType="touchUpInside" id="c8N-xk-DoC"/>
+                                </connections>
+                            </button>
                         </subviews>
                         <color key="backgroundColor" white="1" alpha="1" colorSpace="custom" customColorSpace="calibratedWhite"/>
                         <constraints>
+                            <constraint firstItem="wfy-db-euE" firstAttribute="top" secondItem="Wyn-Mp-4ru" secondAttribute="bottom" constant="150" id="CVK-nP-Q7T"/>
                             <constraint firstItem="9BP-Wg-lA5" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" id="Oj9-L9-R1X"/>
+                            <constraint firstItem="Wyn-Mp-4ru" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" id="dbm-e5-gPL"/>
                             <constraint firstItem="9BP-Wg-lA5" firstAttribute="centerY" secondItem="8bC-Xf-vdC" secondAttribute="centerY" id="sln-O9-Ssa"/>
                         </constraints>
                     </view>
                     <connections>
+                        <outlet property="deleteOriginFileButton" destination="Wyn-Mp-4ru" id="mgT-N0-6Ms"/>
                         <outlet property="goButton" destination="9BP-Wg-lA5" id="xRY-5k-9qW"/>
                     </connections>
                 </viewController>
