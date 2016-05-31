@@ -8,6 +8,7 @@
 
 #import "ViewController.h"
 #import "rawH264Encoder.h"
+//https://developer.apple.com/library/mac/documentation/AudioVideo/Conceptual/AVFoundationPG/Articles/05_Export.html
 
 #define WEAK_OBJ_REF(obj) __weak __typeof__(obj) weak_##obj = obj
 
@@ -33,6 +34,9 @@
 @property (assign, nonatomic)BOOL ifSaveH464File;
 @property (assign, nonatomic)BOOL if7Second;
 @property (assign, nonatomic)BOOL ifReduceFrame;
+@property (assign, nonatomic)BOOL ifUseToolBox;
+@property (strong, nonatomic)dispatch_queue_t encodingQueue;
+@property (assign, nonatomic)CMTime lastSamplePTS;
 
 @end
 
@@ -62,6 +66,7 @@
     self.ifSaveH464File = NO;
     self.if7Second = YES;
     self.ifReduceFrame = NO;
+    self.ifUseToolBox = NO;
 }
 
 - (void)didReceiveMemoryWarning {
@@ -71,7 +76,11 @@
 
 - (IBAction)clickGo:(id)sender {
     self.goButton.enabled = NO;
-    [self carolStart];
+    if (_ifUseToolBox) {
+        [self carolStart];
+    }else{
+        [self carolStartWithOutToolBox];
+    }
     return;
 }
 
@@ -135,7 +144,7 @@
     [fileManager createFileAtPath:h264FilePath contents:nil attributes:nil];
     fileHandle = [NSFileHandle fileHandleForWritingAtPath:h264FilePath];
     
-    NSString *originPath=[[NSBundle mainBundle] pathForResource:@"daemon" ofType:@"mp4"];
+    NSString *originPath=[[NSBundle mainBundle] pathForResource:@"20160112221628" ofType:@"mp4"];
     sourceFilePath = [documentsDirectory stringByAppendingPathComponent:@"source.mp4"];
     [[NSFileManager defaultManager] removeItemAtPath:sourceFilePath error:nil];
     [[NSFileManager defaultManager] copyItemAtURL:[NSURL fileURLWithPath:originPath] toURL:[NSURL fileURLWithPath:sourceFilePath] error:&error];
@@ -153,22 +162,49 @@
 {
     NSArray * paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
     NSString * documentsDirectory = [paths objectAtIndex:0];
-    NSString * finalPath = [documentsDirectory stringByAppendingPathComponent:@"final.mov"];
+    NSString * finalPath = [documentsDirectory stringByAppendingPathComponent:@"final.mp4"];
     NSError * error = nil;
     [[NSFileManager defaultManager] removeItemAtURL:[NSURL fileURLWithPath:finalPath] error:nil];
     
-    self.assetWriter = [[AVAssetWriter alloc] initWithURL:[NSURL fileURLWithPath:finalPath] fileType:AVFileTypeQuickTimeMovie error:&error];
+    self.assetWriter = [[AVAssetWriter alloc] initWithURL:[NSURL fileURLWithPath:finalPath] fileType:AVFileTypeMPEG4 error:&error];
     NSParameterAssert(self.assetWriter);
     
     //如果输入源是已经编码过的，setting参数必须为nil
-    self.videoWriterInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo outputSettings:nil];
+    NSDictionary * videoSettings = @{
+                                     AVVideoCodecKey : AVVideoCodecH264,
+                                     AVVideoHeightKey : @(360),
+                                     AVVideoWidthKey : @(640),
+                                     AVVideoCompressionPropertiesKey: @{
+                                             AVVideoProfileLevelKey : AVVideoProfileLevelH264BaselineAutoLevel,
+                                             AVVideoAverageBitRateKey : @(800000),
+//                                             AVVideoMaxKeyFrameIntervalKey : @(60)
+                                             }
+                                     };
+    self.videoWriterInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo outputSettings:videoSettings];
     if ([self.assetWriter canAddInput:self.videoWriterInput]) {
         [self.assetWriter addInput:self.videoWriterInput];
     }else{
         return NO;
     }
+    
+    // Configure the channel layout as mono.
+    AudioChannelLayout monoChannelLayout = {
+        .mChannelLayoutTag = kAudioChannelLayoutTag_Mono,
+        .mChannelBitmap = 0,
+        .mNumberChannelDescriptions = 0
+    };
+    
+    // Convert the channel layout object to an NSData object.
+    NSData *channelLayoutAsData = [NSData dataWithBytes:&monoChannelLayout length:offsetof(AudioChannelLayout, mChannelDescriptions)];
 
-    self.audioWriterInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeAudio outputSettings:nil];
+    NSDictionary * audioSettings = @{
+                                     AVFormatIDKey : @(kAudioFormatMPEG4AAC),
+                                     AVNumberOfChannelsKey : @(1),
+                                     AVSampleRateKey : @(44100),
+                                     AVEncoderBitRateKey : @(48000),
+                                     AVChannelLayoutKey  : channelLayoutAsData,
+                                     };
+    self.audioWriterInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeAudio outputSettings:audioSettings];
     if ([self.assetWriter canAddInput:self.audioWriterInput]) {
         [self.assetWriter addInput:self.audioWriterInput];
     }else{
@@ -192,8 +228,11 @@
     AVAssetTrack *videoTrack = (AVAssetTrack *)[videoTracks firstObject];
     NSLog(@"frameRate : %f", videoTrack.nominalFrameRate);
     NSLog(@"timeScale : %d", videoTrack.naturalTimeScale);
+    
+    NSArray *videoFormatDescriptions = [videoTrack formatDescriptions];
+    
     NSString* key = (NSString*)kCVPixelBufferPixelFormatTypeKey;
-    NSNumber* val = [NSNumber numberWithUnsignedInt:kCVPixelFormatType_420YpCbCr8BiPlanarFullRange];
+    NSNumber* val = [NSNumber numberWithUnsignedInt:kCVPixelFormatType_422YpCbCr8];
     NSDictionary* videoSettings = [NSDictionary dictionaryWithObject:val forKey:key];
     self.videoTrackOutput = [AVAssetReaderTrackOutput assetReaderTrackOutputWithTrack:videoTrack outputSettings:videoSettings];
     
@@ -208,7 +247,9 @@
     AVAssetTrack *audioTrack = (AVAssetTrack *)[audioTracks firstObject];
     NSLog(@"frameRate : %f", audioTrack.nominalFrameRate);
     NSLog(@"timeScale : %d", audioTrack.naturalTimeScale);
-    self.audioTrackOutput = [AVAssetReaderTrackOutput assetReaderTrackOutputWithTrack:audioTrack outputSettings:nil];
+    NSArray *audioFormatDescriptions = [audioTrack formatDescriptions];
+    NSDictionary * audioSetting = @{ AVFormatIDKey : [NSNumber numberWithUnsignedInt:kAudioFormatLinearPCM] };
+    self.audioTrackOutput = [AVAssetReaderTrackOutput assetReaderTrackOutputWithTrack:audioTrack outputSettings:audioSetting];
     
     if ([self.assetReader canAddOutput:self.audioTrackOutput]) {
         [self.assetReader addOutput:self.audioTrackOutput];
@@ -324,10 +365,10 @@
     [self.assetWriter finishWritingWithCompletionHandler:^{
         NSArray * paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
         NSString * documentsDirectory = [paths objectAtIndex:0];
-        NSString * finalPath = [documentsDirectory stringByAppendingPathComponent:@"final.mov"];
+        NSString * finalPath = [documentsDirectory stringByAppendingPathComponent:@"final.mp4"];
         if ([[NSFileManager defaultManager] fileExistsAtPath:finalPath]) {
             NSFileHandle * mp4FileHandle = [NSFileHandle fileHandleForReadingAtPath:finalPath];
-            NSLog(@">>>>>>> mov file  size ( %lld ) >>>>>", [mp4FileHandle seekToEndOfFile]);
+            NSLog(@">>>>>>> mp4 file  size ( %lld ) >>>>>", [mp4FileHandle seekToEndOfFile]);
             NSLog(@"keyFrameCount: %d", self.keyFrameCount - 1);
             NSLog(@"keyFrameInterval: %d", self.keyFrameInterval);
             NSLog(@"encodeVideoFrame: %d", self.outputVideoFrameCount);
@@ -344,28 +385,49 @@
 
 - (CMSampleBufferRef)nextVideoSampleBufferToWrite
 {
-    int totalSamples = (int)self.compressedVideoSamples.count;
-    static int currVideoCount = 1;
-    //NSLog(@"+++ ask for video : %d", currVideoCount);
-    if (self.ifReduceFrame && currVideoCount % 5 == 0) {
-        currVideoCount ++;
-    }
-    if (currVideoCount < totalSamples) {
-        CMSampleBufferRef sampleBuffer = (__bridge CMSampleBufferRef)(self.compressedVideoSamples[currVideoCount++]);
+    if (!_ifUseToolBox) {
+        static int currVideoCount = 0;
+        CMSampleBufferRef sampleBuffer = [self.videoTrackOutput copyNextSampleBuffer];
+        currVideoCount++;
+        if (self.ifReduceFrame && currVideoCount % 5 == 0) {
+            sampleBuffer = [self.videoTrackOutput copyNextSampleBuffer];
+            currVideoCount++;
+        }
         CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-        //NSLog(@"V - > PTS:%lld",  presentationTimeStamp.value);
-        //视频总PPS：130048
+        //NSLog(@"V - >PTS:%lld",  presentationTimeStamp.value);
+        //音频总PPS：464111
+//        if (currVideoCount > 100) {
+//            return nil;
+//        }
         if (self.if7Second && presentationTimeStamp.value > 97500) {
             return nil;
         }
+        if (sampleBuffer) {
+            self.lastSamplePTS = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+        }
         return sampleBuffer;
+    }else{
+        int totalSamples = (int)self.compressedVideoSamples.count;
+        static int currVideoCount = 1;
+        if (self.ifReduceFrame && currVideoCount % 5 == 0) {
+            currVideoCount ++;
+        }
+        if (currVideoCount < totalSamples) {
+            CMSampleBufferRef sampleBuffer = (__bridge CMSampleBufferRef)(self.compressedVideoSamples[currVideoCount++]);
+            CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+            //NSLog(@"V - > PTS:%lld",  presentationTimeStamp.value);
+            //视频总PPS：130048
+            if (self.if7Second && presentationTimeStamp.value > 97500) {
+                return nil;
+            }
+            return sampleBuffer;
+        }
     }
     return nil;
 }
 
 - (CMSampleBufferRef)nextAudioSampleBufferToWrite
 {
-    //NSLog(@"--- ask for audio : %d", askedAudioCount++);
     static int currAudioCount = 0;
     CMSampleBufferRef sampleBuffer = [self.audioTrackOutput copyNextSampleBuffer];
     currAudioCount++;
@@ -376,11 +438,98 @@
     CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
     //NSLog(@"0 - >PTS:%lld",  presentationTimeStamp.value);
     //音频总PPS：464111
+//    if (currAudioCount > 48) {
+//        return nil;
+//    }
     if (self.if7Second && presentationTimeStamp.value > 348000) {
         return nil;
     }
     return sampleBuffer;
 }
 
+- (void)carolStartWithOutToolBox
+{
+    //prepare for reader and writer
+    NSParameterAssert([self startAssetReader]);
+    NSParameterAssert([self prepareWriter]);
+    
+    [self.assetWriter startWriting];
+    CMSampleBufferRef firstSample = [self nextVideoSampleBufferToWrite];
+    [self.assetWriter startSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp(firstSample)];
+    
+    //dispatch_group_t encodingGroup = dispatch_group_create();
+    //dispatch_group_enter(encodingGroup);
+    WEAK_OBJ_REF(self);
+    [self.videoWriterInput requestMediaDataWhenReadyOnQueue:writeQueue usingBlock:^{
+        while ([weak_self.videoWriterInput isReadyForMoreMediaData])
+        {
+            static CMSampleBufferRef videoNextBuff = nil;
+            if (videoNextBuff == nil) {
+                videoNextBuff = firstSample;
+            }else{
+                videoNextBuff = [self nextVideoSampleBufferToWrite];
+            }
+            if (videoNextBuff)
+            {
+                weak_self.outputVideoFrameCount++;
+                 NSLog(@"v -> %d", weak_self.outputVideoFrameCount);
+                [weak_self.videoWriterInput appendSampleBuffer:videoNextBuff];
+                CFRelease(videoNextBuff);
+            }
+            else
+            {
+                [weak_self.videoWriterInput markAsFinished];
+                NSLog(@"======= end video (%d) =====", weak_self.outputVideoFrameCount);
+                if (weak_self.oneTrackHasFinishWrite) {
+                    
+                    [weak_self.assetWriter endSessionAtSourceTime:weak_self.lastSamplePTS];
+                    [weak_self carolEndWork];
+                }else{
+                    weak_self.oneTrackHasFinishWrite = YES;
+                }
+                //dispatch_group_leave(encodingGroup);
+                break;
+            }
+        }
+    }];
+    
+    //dispatch_group_enter(encodingGroup);
+    [self.audioWriterInput requestMediaDataWhenReadyOnQueue:writeQueue usingBlock:^{
+        while ([weak_self.audioWriterInput isReadyForMoreMediaData])
+        {
+            CMSampleBufferRef audioNextBuff = [weak_self nextAudioSampleBufferToWrite];
+            if (audioNextBuff)
+            {
+                weak_self.outputAudioFrameCount++;
+                NSLog(@"audio -> %d", weak_self.outputAudioFrameCount);
+                [weak_self.audioWriterInput appendSampleBuffer:audioNextBuff];
+                CFRelease(audioNextBuff);
+            }
+            else
+            {
+                [weak_self.audioWriterInput markAsFinished];
+                NSLog(@"======= end audio (%d)", weak_self.outputAudioFrameCount);
+                if (weak_self.oneTrackHasFinishWrite) {
+                    [weak_self.assetWriter endSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp([self.videoTrackOutput copyNextSampleBuffer])];
+                    [weak_self carolEndWork];
+                }else{
+                    weak_self.oneTrackHasFinishWrite = YES;
+                }
+                //dispatch_group_leave(encodingGroup);
+                break;
+            }
+        }
+    }];
 
+    //dispatch_group_wait(encodingGroup, DISPATCH_TIME_FOREVER);
+}
+
+- (dispatch_queue_t)encodingQueue
+{
+    if(!_encodingQueue)
+    {
+        _encodingQueue = dispatch_queue_create("com.myProject.encoding", NULL);
+    }
+    return _encodingQueue;
+}
 @end

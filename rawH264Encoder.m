@@ -67,6 +67,8 @@
             NSAssert(statusCode != noErr, @"VTCompressionSessionEncodeFrame faild");
             return;
         }
+        CFRelease(imageBuffer);
+        CFRelease(sampleBuffer);
 
     });
 }
@@ -204,7 +206,8 @@ void didCompressH264(void *outputCallbackRefCon, void *sourceFrameRefCon, OSStat
         }
         
     }
-    
+    CFRelease(dataBuffer);
+    CFRelease(sampleBuffer);
 }
 
 @end
