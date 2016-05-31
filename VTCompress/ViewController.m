@@ -38,6 +38,14 @@
 @property (strong, nonatomic)dispatch_queue_t encodingQueue;
 @property (assign, nonatomic)CMTime lastSamplePTS;
 
+@property (strong, nonatomic)NSArray * sourceFileNames;
+@property (strong, nonatomic)NSArray * lastVideoPTS;
+@property (strong, nonatomic)NSArray * lastAudioPTS;
+@property (strong, nonatomic)NSArray * widthAndHeight;
+@property (strong, nonatomic)NSDictionary * videoSettings;
+@property (strong, nonatomic)NSDictionary * audioSettings;
+@property (assign, nonatomic)NSInteger currentFileIndex;
+
 @end
 
 @implementation ViewController
@@ -53,7 +61,6 @@
     [super viewDidLoad];
     writeQueue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
     self.goButton.enabled = NO;
-    [self prepareFile];
     self.goButton.enabled = YES;
     self.oneTrackHasFinishWrite = NO;
     self.compressedVideoSamples = [[NSMutableArray alloc] init];
@@ -64,9 +71,78 @@
     self.outputVideoFrameCount = 0;
     self.outputAudioFrameCount = 0;
     self.ifSaveH464File = NO;
-    self.if7Second = YES;
+    self.if7Second = NO;
     self.ifReduceFrame = NO;
     self.ifUseToolBox = NO;
+    
+    self.sourceFileNames = [NSArray arrayWithObjects:@"daemon", @"book", @"roadA", @"raodB", nil];
+    self.lastVideoPTS = [NSArray arrayWithObjects:@(130048), @(5703), @(5463), @(5883), nil];
+    self.lastAudioPTS = [NSArray arrayWithObjects:@(464111), @(413623), @(401344), @(425920), nil];
+    self.widthAndHeight = @[@{@"width": @(360), @"height":@(480)},
+                            @{@"width": @(640), @"height":@(360)},
+                            @{@"width": @(640), @"height":@(360)},
+                            @{@"width": @(640), @"height":@(360)},];
+
+    self.videoSettings = @{
+                           AVVideoCodecKey : AVVideoCodecH264,
+                           AVVideoHeightKey : @(360),
+                           AVVideoWidthKey : @(640),
+                           AVVideoCompressionPropertiesKey: @{
+                                   AVVideoProfileLevelKey : AVVideoProfileLevelH264High41,
+                                   AVVideoAverageBitRateKey : @(800000),
+//                                   AVVideoMaxKeyFrameIntervalKey : @(60),
+                                   AVVideoMaxKeyFrameIntervalDurationKey : @(2.0),
+                                   }
+                           };
+    
+    // Configure the channel layout as mono.
+    AudioChannelLayout monoChannelLayout = {
+        .mChannelLayoutTag = kAudioChannelLayoutTag_Mono,
+        .mChannelBitmap = 0,
+        .mNumberChannelDescriptions = 0
+    };
+    
+    // Convert the channel layout object to an NSData object.
+    NSData *channelLayoutAsData = [NSData dataWithBytes:&monoChannelLayout length:offsetof(AudioChannelLayout, mChannelDescriptions)];
+    
+    self.audioSettings = @{
+                           AVFormatIDKey : @(kAudioFormatMPEG4AAC),
+                           AVNumberOfChannelsKey : @(1),
+                           AVSampleRateKey : @(44100),
+                           AVEncoderBitRateKey : @(48000),
+                           AVChannelLayoutKey  : channelLayoutAsData,
+                           };
+}
+
+- (void)reset
+{
+    self.oneTrackHasFinishWrite = NO;
+    self.keyFrameCount = 0;
+    self.keyFrameInterval = 0;
+    self.inputVideoFrameCount = 0;
+    self.inputAudioFrameCount = 0;
+    self.outputVideoFrameCount = 0;
+    self.outputAudioFrameCount = 0;
+}
+
+- (NSString *)currentFileName
+{
+    NSString * name = self.sourceFileNames[self.currentFileIndex];
+    NSDictionary * compressionSettings = [self.videoSettings objectForKey:AVVideoCompressionPropertiesKey];
+    for (id key in compressionSettings) {
+        NSString * value = [compressionSettings objectForKey:key];
+        if (key == AVVideoProfileLevelKey) {
+            name = [name stringByAppendingString:[NSString stringWithFormat:@"-L%@", value]];
+        }else if (key == AVVideoAverageBitRateKey){
+            name = [name stringByAppendingString:[NSString stringWithFormat:@"-B%ld", value.integerValue/1000]];
+        }else if (key == AVVideoMaxKeyFrameIntervalKey){
+            name = [name stringByAppendingString:[NSString stringWithFormat:@"-FI%@", value]];
+        }else if (key == AVVideoMaxKeyFrameIntervalDurationKey){
+            name = [name stringByAppendingString:[NSString stringWithFormat:@"-FD%@", value]];
+        }
+    }
+    name = [name stringByAppendingString:@".mp4"];
+    return name;
 }
 
 - (void)didReceiveMemoryWarning {
@@ -144,8 +220,9 @@
     [fileManager createFileAtPath:h264FilePath contents:nil attributes:nil];
     fileHandle = [NSFileHandle fileHandleForWritingAtPath:h264FilePath];
     
-    NSString *originPath=[[NSBundle mainBundle] pathForResource:@"20160112221628" ofType:@"mp4"];
-    sourceFilePath = [documentsDirectory stringByAppendingPathComponent:@"source.mp4"];
+    NSString *sourceFileName = self.sourceFileNames[self.currentFileIndex];
+    NSString *originPath=[[NSBundle mainBundle] pathForResource:sourceFileName ofType:@"mp4"];
+    sourceFilePath = [documentsDirectory stringByAppendingPathComponent:[sourceFileName stringByAppendingString:@".mp4"]];
     [[NSFileManager defaultManager] removeItemAtPath:sourceFilePath error:nil];
     [[NSFileManager defaultManager] copyItemAtURL:[NSURL fileURLWithPath:originPath] toURL:[NSURL fileURLWithPath:sourceFilePath] error:&error];
     if (error) {
@@ -162,50 +239,21 @@
 {
     NSArray * paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
     NSString * documentsDirectory = [paths objectAtIndex:0];
-    NSString * finalPath = [documentsDirectory stringByAppendingPathComponent:@"final.mp4"];
+    NSString * finalPath = [documentsDirectory stringByAppendingPathComponent:[self currentFileName]];
     NSError * error = nil;
     [[NSFileManager defaultManager] removeItemAtURL:[NSURL fileURLWithPath:finalPath] error:nil];
     
     self.assetWriter = [[AVAssetWriter alloc] initWithURL:[NSURL fileURLWithPath:finalPath] fileType:AVFileTypeMPEG4 error:&error];
     NSParameterAssert(self.assetWriter);
     
-    //如果输入源是已经编码过的，setting参数必须为nil
-    NSDictionary * videoSettings = @{
-                                     AVVideoCodecKey : AVVideoCodecH264,
-                                     AVVideoHeightKey : @(360),
-                                     AVVideoWidthKey : @(640),
-                                     AVVideoCompressionPropertiesKey: @{
-                                             AVVideoProfileLevelKey : AVVideoProfileLevelH264High41,
-                                             AVVideoAverageBitRateKey : @(800000),
-//                                             AVVideoMaxKeyFrameIntervalKey : @(60),
-                                             AVVideoMaxKeyFrameIntervalDurationKey : @(2.0),
-                                             }
-                                     };
-    self.videoWriterInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo outputSettings:videoSettings];
+    self.videoWriterInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo outputSettings:self.videoSettings];
     if ([self.assetWriter canAddInput:self.videoWriterInput]) {
         [self.assetWriter addInput:self.videoWriterInput];
     }else{
         return NO;
     }
     
-    // Configure the channel layout as mono.
-    AudioChannelLayout monoChannelLayout = {
-        .mChannelLayoutTag = kAudioChannelLayoutTag_Mono,
-        .mChannelBitmap = 0,
-        .mNumberChannelDescriptions = 0
-    };
-    
-    // Convert the channel layout object to an NSData object.
-    NSData *channelLayoutAsData = [NSData dataWithBytes:&monoChannelLayout length:offsetof(AudioChannelLayout, mChannelDescriptions)];
-
-    NSDictionary * audioSettings = @{
-                                     AVFormatIDKey : @(kAudioFormatMPEG4AAC),
-                                     AVNumberOfChannelsKey : @(1),
-                                     AVSampleRateKey : @(44100),
-                                     AVEncoderBitRateKey : @(48000),
-                                     AVChannelLayoutKey  : channelLayoutAsData,
-                                     };
-    self.audioWriterInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeAudio outputSettings:audioSettings];
+    self.audioWriterInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeAudio outputSettings:self.audioSettings];
     if ([self.assetWriter canAddInput:self.audioWriterInput]) {
         [self.assetWriter addInput:self.audioWriterInput];
     }else{
@@ -266,6 +314,7 @@
 - (void)carolStart
 {
     //prepare for reader and writer
+    [self prepareFile];
     NSParameterAssert([self startAssetReader]);
     NSParameterAssert([self prepareWriter]);
     h264Encoder = [[rawH264Encoder alloc] initWithWidth:360 height:480];
@@ -338,7 +387,7 @@
             {
                 weak_self.outputAudioFrameCount++;
                 [weak_self.audioWriterInput appendSampleBuffer:nextSampleBuffer];
-                CFRelease(nextSampleBuffer);
+                //CFRelease(nextSampleBuffer);
             }
             else
             {
@@ -366,7 +415,7 @@
     [self.assetWriter finishWritingWithCompletionHandler:^{
         NSArray * paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
         NSString * documentsDirectory = [paths objectAtIndex:0];
-        NSString * finalPath = [documentsDirectory stringByAppendingPathComponent:@"final.mp4"];
+        NSString * finalPath = [documentsDirectory stringByAppendingPathComponent:[self currentFileName]];
         if ([[NSFileManager defaultManager] fileExistsAtPath:finalPath]) {
             NSFileHandle * mp4FileHandle = [NSFileHandle fileHandleForReadingAtPath:finalPath];
             NSLog(@">>>>>>> mp4 file  size ( %lld ) >>>>>", [mp4FileHandle seekToEndOfFile]);
@@ -376,7 +425,11 @@
             NSLog(@"encodeAudioFrame: %d", self.outputAudioFrameCount);
             [mp4FileHandle closeFile];
         }
-        NSLog(@" == DONE ==");
+        NSLog(@" == DONE (%ld) ==", (long)self.currentFileIndex);
+        self.currentFileIndex += 1;
+        if (self.currentFileIndex < self.sourceFileNames.count) {
+            [self performSelectorOnMainThread:@selector(carolStartWithOutToolBox) withObject:nil waitUntilDone:NO];
+        }
     }];
 //    for (id obj in self.compressedVideoSamples) {
 //        CFRelease((__bridge CMSampleBufferRef)obj);
@@ -395,12 +448,9 @@
             currVideoCount++;
         }
         CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-        //NSLog(@"V - >PTS:%lld",  presentationTimeStamp.value);
-        //音频总PPS：464111
-//        if (currVideoCount > 100) {
-//            return nil;
-//        }
-        if (self.if7Second && presentationTimeStamp.value > 97500) {
+        NSLog(@"V - >PTS:%lld",  presentationTimeStamp.value);
+        NSInteger lastVideoPTS = (NSInteger)self.lastVideoPTS[self.currentFileIndex];
+        if (self.if7Second && presentationTimeStamp.value > lastVideoPTS * 0.75) {
             return nil;
         }
         if (sampleBuffer) {
@@ -417,8 +467,9 @@
             CMSampleBufferRef sampleBuffer = (__bridge CMSampleBufferRef)(self.compressedVideoSamples[currVideoCount++]);
             CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
             //NSLog(@"V - > PTS:%lld",  presentationTimeStamp.value);
-            //视频总PPS：130048
-            if (self.if7Second && presentationTimeStamp.value > 97500) {
+            //海边视频总PPS：130048
+            NSInteger lastVideoPTS = (NSInteger)self.lastVideoPTS[self.currentFileIndex];
+            if (self.if7Second && presentationTimeStamp.value > lastVideoPTS * 0.75) {
                 return nil;
             }
             return sampleBuffer;
@@ -437,12 +488,13 @@
         currAudioCount++;
     }
     CMTime presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-    //NSLog(@"0 - >PTS:%lld",  presentationTimeStamp.value);
+    NSLog(@"0 - >PTS:%lld",  presentationTimeStamp.value);
     //音频总PPS：464111
 //    if (currAudioCount > 48) {
 //        return nil;
 //    }
-    if (self.if7Second && presentationTimeStamp.value > 348000) {
+    NSInteger lastAudioPTS = (NSInteger)self.lastAudioPTS[self.currentFileIndex];
+    if (self.if7Second && presentationTimeStamp.value > lastAudioPTS * 0.75) {
         return nil;
     }
     return sampleBuffer;
@@ -450,6 +502,8 @@
 
 - (void)carolStartWithOutToolBox
 {
+    [self reset];
+    [self prepareFile];
     //prepare for reader and writer
     NSParameterAssert([self startAssetReader]);
     NSParameterAssert([self prepareWriter]);
@@ -482,6 +536,7 @@
                 }
                 else
                 {
+                    hasProcessFirstSample = NO;
                     [weak_self.videoWriterInput markAsFinished];
                     NSLog(@"======= end video (%d) =====", weak_self.outputVideoFrameCount);
                     if (weak_self.oneTrackHasFinishWrite) {
