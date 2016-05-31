@@ -175,9 +175,10 @@
                                      AVVideoHeightKey : @(360),
                                      AVVideoWidthKey : @(640),
                                      AVVideoCompressionPropertiesKey: @{
-                                             AVVideoProfileLevelKey : AVVideoProfileLevelH264BaselineAutoLevel,
+                                             AVVideoProfileLevelKey : AVVideoProfileLevelH264High41,
                                              AVVideoAverageBitRateKey : @(800000),
-//                                             AVVideoMaxKeyFrameIntervalKey : @(60)
+//                                             AVVideoMaxKeyFrameIntervalKey : @(60),
+                                             AVVideoMaxKeyFrameIntervalDurationKey : @(2.0),
                                              }
                                      };
     self.videoWriterInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo outputSettings:videoSettings];
@@ -463,32 +464,41 @@
     [self.videoWriterInput requestMediaDataWhenReadyOnQueue:writeQueue usingBlock:^{
         while ([weak_self.videoWriterInput isReadyForMoreMediaData])
         {
-            static CMSampleBufferRef videoNextBuff = nil;
-            if (videoNextBuff == nil) {
-                videoNextBuff = firstSample;
-            }else{
-                videoNextBuff = [self nextVideoSampleBufferToWrite];
-            }
-            if (videoNextBuff)
-            {
-                weak_self.outputVideoFrameCount++;
-                 NSLog(@"v -> %d", weak_self.outputVideoFrameCount);
-                [weak_self.videoWriterInput appendSampleBuffer:videoNextBuff];
-                CFRelease(videoNextBuff);
-            }
-            else
-            {
-                [weak_self.videoWriterInput markAsFinished];
-                NSLog(@"======= end video (%d) =====", weak_self.outputVideoFrameCount);
-                if (weak_self.oneTrackHasFinishWrite) {
-                    
-                    [weak_self.assetWriter endSessionAtSourceTime:weak_self.lastSamplePTS];
-                    [weak_self carolEndWork];
+            @try {
+                static CMSampleBufferRef videoNextBuff = nil;
+                static BOOL hasProcessFirstSample = NO;
+                if (!hasProcessFirstSample) {
+                    videoNextBuff = firstSample;
+                    hasProcessFirstSample = YES;
                 }else{
-                    weak_self.oneTrackHasFinishWrite = YES;
+                    videoNextBuff = [self nextVideoSampleBufferToWrite];
                 }
-                //dispatch_group_leave(encodingGroup);
-                break;
+                if (videoNextBuff)
+                {
+                    [weak_self.videoWriterInput appendSampleBuffer:videoNextBuff];
+                    CFRelease(videoNextBuff);
+                    weak_self.outputVideoFrameCount++;
+                    NSLog(@"v -> %d", weak_self.outputVideoFrameCount);
+                }
+                else
+                {
+                    [weak_self.videoWriterInput markAsFinished];
+                    NSLog(@"======= end video (%d) =====", weak_self.outputVideoFrameCount);
+                    if (weak_self.oneTrackHasFinishWrite) {
+                        
+                        [weak_self.assetWriter endSessionAtSourceTime:weak_self.lastSamplePTS];
+                        [weak_self carolEndWork];
+                    }else{
+                        weak_self.oneTrackHasFinishWrite = YES;
+                    }
+                    //dispatch_group_leave(encodingGroup);
+                    break;
+                }
+            } @catch (NSException *exception) {
+                if ([exception isKindOfClass:NSInternalInconsistencyException.class]) {
+                    NSLog(@" # # # # # # # #  NSInternalInconsistencyException   # # # # # # ");
+                    continue;
+                }
             }
         }
     }];
